@@ -1,6 +1,7 @@
 from data.data_tools import *
 from data.utils import pre_video
 import clip
+from tqdm import tqdm
 def create_new_features(clip_version : str, h5_file_name : str, h5_new_file_name : str, video_original_dir: str) -> None:
     """
     change features
@@ -16,7 +17,7 @@ def create_new_features(clip_version : str, h5_file_name : str, h5_new_file_name
     model, preprocessing  = clip.load(clip_version, device=device)
     data = read_h5_file(h5_file_name)
     
-    for video_id in data.keys():
+    for video_id in tqdm(data.keys()):
         cap = cv2.VideoCapture(os.path.join(video_original_dir, video_id+'.mp4'))
         features = []
         for i in data[video_id]['picks']:
