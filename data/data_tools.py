@@ -39,7 +39,6 @@ def read_h5_file(h5_file_name : str) -> dict:
     for name in f.keys():
         data[name] = {}
         for key in f[name].keys():
-            print(key)
             data[name][key] = f[name + '/' + key][()]
     return data
 
@@ -58,6 +57,7 @@ def extract_features(image_cv2 : np.ndarray, extractor : object, preprocess : ob
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     # Load and preprocess the image
     image = cv2.cvtColor(image_cv2, cv2.COLOR_BGR2RGB)
+    image = Image.fromarray(image)
     image = preprocess(image).unsqueeze(0).to(device)  # Add batch dimension
     # Extract features using the model
     with torch.no_grad():
