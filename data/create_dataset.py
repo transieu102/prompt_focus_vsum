@@ -45,7 +45,7 @@ def create_new_features(clip_version : str, h5_file_name : str, h5_new_file_name
         data[video_id]['video_mask'] = video_mask
 
         #TODO: add video caption features
-        print(features)
+        # print(features)
         prompt_embeddings = torch.zeros(features[0].shape[1])
         for frame_feature in features:
             prompt_embeddings += frame_feature
