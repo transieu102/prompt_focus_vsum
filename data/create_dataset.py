@@ -1,5 +1,5 @@
-from data_tools import *
-from utils import pre_video
+from data.data_tools import *
+from data.utils import pre_video
 import clip
 def create_new_features(clip_version : str, h5_file_name : str, h5_new_file_name : str, video_original_dir: str) -> None:
     """
