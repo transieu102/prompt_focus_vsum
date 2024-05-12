@@ -61,7 +61,7 @@ def extract_features(image_cv2 : np.ndarray, extractor : object, preprocess : ob
     image = preprocess(image).unsqueeze(0).to(device)  # Add batch dimension
     # Extract features using the model
     with torch.no_grad():
-        features = extractor(image)
+        feature = extractor.encode_image(image)
 
     # Return the extracted features
-    return features.squeeze().cpu().numpy()
+    return feature.cpu().detach().numpy()
