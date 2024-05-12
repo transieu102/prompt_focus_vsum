@@ -1,7 +1,7 @@
 from data_tools import *
 from utils import pre_video
 import clip
-def create_new_features(clip_version : str, h5_file_name : str, model_path: str, h5_new_file_name : str, video_original_dir: str) -> None:
+def create_new_features(clip_version : str, h5_file_name : str, h5_new_file_name : str, video_original_dir: str) -> None:
     """
     change features
     Args:
