@@ -13,7 +13,12 @@ from solver_utils import (
     cosine_lr_schedule,
     generate_summary,
     represent_features
+
 )
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 class Solver(object):
     def __init__(self):
         self.model = None
@@ -21,14 +26,16 @@ class Solver(object):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
     def initualize(self):
-        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        # self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        self.device = "cpu"
         # fix the seed for reproducibility
         seed = 42
         torch.manual_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
         cudnn.benchmark = True
-        self.model = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit']).to(self.device)
+        self.model = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], 
+        max_length=self.config['max_video_length']).to(self.device)
     def load_dataset(self):
         self.dataset = read_h5_file(self.config['dataset_path'])
     def load_split(self):
@@ -55,6 +62,7 @@ class Solver(object):
         for split_id in split_ids:
             print('Begin training on split {}'.format(split_id))
             train_keys = self.split[split_id]['train_keys']
+            model_vram = torch.cuda.memory_allocated()
             self.initualize()
             optimizer = torch.optim.AdamW(self.model.parameters(), lr=float(self.config['init_lr']))
             for epoch in range(self.config['max_epoch']):
@@ -71,16 +79,21 @@ class Solver(object):
                     video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings']).to(self.device).unsqueeze( 1)
                     video_mask = torch.tensor(self.dataset[video_id]['video_mask']).to(self.device).unsqueeze(0)
                     prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
+                    
                     # print('video feature shape:', video_embeddings.shape)
                     # print(' video_mask shape:', video_mask.shape)
                     # print('prompt_embeddings shape:', prompt_embeddings.shape)
                     score = self.model(video_embeddings, video_mask, prompt_embeddings)
-                    summary = generate_summary(score, self.dataset[video_id]['change_points'], self.dataset[video_id]['n_frames'], self.dataset[video_id]['n_frame_per_seg'], self.dataset[video_id]['picks'])
+                    score = score.detach().cpu().numpy().squeeze(0).squeeze(1)
+                    print("score",score.shape)
+                    summary,_ = generate_summary(score, self.dataset[video_id]['change_points'], self.dataset[video_id]['n_frames'], self.dataset[video_id]['n_frame_per_seg'], self.dataset[video_id]['picks'])
+                    print(np.array(summary).shape)
                     mask = [gt for frame_id, gt in enumerate(summary) if frame_id in self.dataset[video_id]['picks'] ]
                     represented_features = represent_features(mask, video_embeddings)
                     representativeness_loss = self.representativeness_loss(represented_features, video_embeddings)
                     diversity_loss = self.diversity_loss(video_embeddings[mask == 1])
-                    loss = representativeness_loss + diversity_loss
+                    # loss = representativeness_loss + diversity_loss
+                    loss =  diversity_loss
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
@@ -88,5 +101,5 @@ class Solver(object):
 
 # from train_solver import Solver
 solver = Solver()
-solver.load_config('/content/prompt_focus_vsum/config/promt_focus.yaml')
+solver.load_config('/MLCV/haov/projects/video-sum/prompt_focus_vsum/config/promt_focus.yaml')
 solver.train()

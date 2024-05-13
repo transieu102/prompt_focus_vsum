@@ -1,5 +1,5 @@
-dataset_path: 'dataset/eccv16_dataset_tvsum_google_pool5_sumprompt_clip_L14.h5'
-split_path : 'dataset/tvsum_splits.json'
+dataset_path: '/MLCV/haov/projects/video-sum/eccv16_dataset_tvsum_google_pool5_sumprompt_clip_L14.h5'
+split_path : '/MLCV/haov/projects/video-sum/tvsum_splits.json'
 
 
 # model

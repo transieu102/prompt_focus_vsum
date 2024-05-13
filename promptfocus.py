@@ -70,6 +70,7 @@ class PromptFocus(nn.Module):
             )[0, :, :, 0].permute(1, 0)
         else:
             pos_embed = pos_embed[:video_length]
+
         return pos_embed
 
     def forward(self, video_embeddings, video_mask, prompt_embeddings):
@@ -80,22 +81,30 @@ class PromptFocus(nn.Module):
             video_mask (torch.Tensor): video mask (B, T)
             prompt_embeddings (torch.Tensor): prompt embeddings (B, C)
         """
-
+        print(video_embeddings.shape)
         device = video_embeddings.device
+        video_len = video_embeddings.size(0)
 
+        video_embeddings = video_embeddings.permute(1, 0, 2)
         # interpolate position embeddings
         position_embeddings = self._interpolate_pos_embed(
-            self.position_embeddings.weight, video_embeddings.size(0)
+            self.position_embeddings.weight, video_embeddings.size(1)
         )
+        # position_embeddings = position_embeddings
+        print(video_embeddings.shape)
         video_embeddings = video_embeddings + position_embeddings
-
+        print(video_embeddings.shape)
+        print(video_mask.shape)
         # temporal transformer
         video_embeddings = self.tt(video_embeddings, video_mask)  # shape dont change
+        print(video_embeddings.shape)
+
         video_embeddings = video_embeddings + position_embeddings
         # multihead attention
         # TODO: gen caption from video & input to attention heads
         # prompt_embeddings = self.prompt_linear(prompt_embeddings)
-
+        print(video_embeddings.shape, prompt_embeddings.shape)
+        video_embeddings = video_embeddings.permute(1, 0, 2)
         video_embeddings_attn, attn_weights = self.multihead_attention(
             query=video_embeddings, key=prompt_embeddings, value=prompt_embeddings
         )
@@ -103,7 +112,7 @@ class PromptFocus(nn.Module):
         # #transformer scoring
         video_embeddings_enc = self.transformer_encoder(video_embeddings_attn)
 
-        video_len = video_embeddings.size(1)
+        video_embeddings_enc = video_embeddings_enc.permute(1, 0, 2)
 
         attention_mask = torch.zeros([video_len, video_len])
         half_atten_len = min(self.kernel_size // 2 + 1, video_len)
@@ -119,16 +128,16 @@ class PromptFocus(nn.Module):
         video_embeddings_dec = self.transformer_decoder(
             video_embeddings_enc, attention_mask[:, None, :, :]
         )
-
         score = self.linear(video_embeddings_dec)
         return score
 
 
-# if __name__ == "__main__":
-#     model = PromptFocus()
-#     # RANDOM video embeddings, video mask, prompt embeddings
-#     video_embeddings = torch.randn(1294,1, 768)
-#     video_mask = torch.randn(1, 1294)
-#     prompt_embeddings = torch.randn(1, 1, 768)
-#     score = model(video_embeddings, video_mask, prompt_embeddings)
-#     print(score.shape)
+if __name__ == "__main__":
+    model = PromptFocus()
+    model.to("cuda")
+    # RANDOM video embeddings, video mask, prompt embeddings
+    video_embeddings = torch.randn(1294,1, 768).to("cuda")
+    video_mask = torch.randn(1, 1294).to("cuda")
+    prompt_embeddings = torch.randn(1, 1, 768).to("cuda")
+    score = model(video_embeddings, video_mask, prompt_embeddings)
+    print(score.shape)
