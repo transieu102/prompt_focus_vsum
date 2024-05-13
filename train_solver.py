@@ -28,7 +28,7 @@ class Solver(object):
         np.random.seed(seed)
         random.seed(seed)
         cudnn.benchmark = True
-        self.model = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit']).to(self.device)
+        self.model = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], max_length = self.config['max_video_length']).to(self.device)
     def load_dataset(self):
         self.dataset = read_h5_file(self.config['dataset_path'])
     def load_split(self):
@@ -68,12 +68,12 @@ class Solver(object):
                 self.model.train()
                 # for video_id in tqdm(train_keys):
                 for video_id in train_keys:
-                    video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings']).to(self.device).unsqueeze( 1)
+                    video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings']).to(self.device).unsqueeze(1)
                     video_mask = torch.tensor(self.dataset[video_id]['video_mask']).to(self.device).unsqueeze(0)
-                    prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
-                    # print('video feature shape:', video_embeddings.shape)
-                    # print(' video_mask shape:', video_mask.shape)
-                    # print('prompt_embeddings shape:', prompt_embeddings.shape)
+                    prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device)
+                    print('video feature shape:', video_embeddings.shape)
+                    print(' video_mask shape:', video_mask.shape)
+                    print('prompt_embeddings shape:', prompt_embeddings.shape)
                     score = self.model(video_embeddings, video_mask, prompt_embeddings)
                     summary = generate_summary(score, self.dataset[video_id]['change_points'], self.dataset[video_id]['n_frames'], self.dataset[video_id]['n_frame_per_seg'], self.dataset[video_id]['picks'])
                     mask = [gt for frame_id, gt in enumerate(summary) if frame_id in self.dataset[video_id]['picks'] ]
@@ -84,9 +84,9 @@ class Solver(object):
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                    
 
-# from train_solver import Solver
+
+
 solver = Solver()
 solver.load_config('/content/prompt_focus_vsum/config/promt_focus.yaml')
 solver.train()
