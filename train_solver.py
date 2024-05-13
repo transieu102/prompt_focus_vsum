@@ -34,12 +34,8 @@ class Solver(object):
         np.random.seed(seed)
         random.seed(seed)
         cudnn.benchmark = True
-<<<<<<< HEAD
         self.model = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], 
         max_length=self.config['max_video_length']).to(self.device)
-=======
-        self.model = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], max_length = self.config['max_video_length']).to(self.device)
->>>>>>> f6641521ce579c9da8c887f21651d60fd5897f21
     def load_dataset(self):
         self.dataset = read_h5_file(self.config['dataset_path'])
     def load_split(self):
@@ -82,18 +78,11 @@ class Solver(object):
                 for video_id in train_keys:
                     video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings']).to(self.device).unsqueeze(1)
                     video_mask = torch.tensor(self.dataset[video_id]['video_mask']).to(self.device).unsqueeze(0)
-<<<<<<< HEAD
                     prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
                     
                     # print('video feature shape:', video_embeddings.shape)
                     # print(' video_mask shape:', video_mask.shape)
                     # print('prompt_embeddings shape:', prompt_embeddings.shape)
-=======
-                    prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device)
-                    print('video feature shape:', video_embeddings.shape)
-                    print(' video_mask shape:', video_mask.shape)
-                    print('prompt_embeddings shape:', prompt_embeddings.shape)
->>>>>>> f6641521ce579c9da8c887f21651d60fd5897f21
                     score = self.model(video_embeddings, video_mask, prompt_embeddings)
                     score = score.detach().cpu().numpy().squeeze(0).squeeze(1)
                     print("score",score.shape)
