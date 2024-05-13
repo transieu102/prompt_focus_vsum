@@ -21,7 +21,7 @@ class PromptFocus(nn.Module):
         kernel_size=5,
         loss_type="cross_entropy",
         vit="base",
-        max_length=512, #max length of video
+        max_length=1294, #max length of video
     ):
         super(PromptFocus, self).__init__()
         self.max_length = max_length
@@ -127,11 +127,11 @@ class PromptFocus(nn.Module):
 if __name__ == "__main__":
     model = PromptFocus()
     # RANDOM video embeddings, video mask, prompt embeddings
-    video_embeddings = torch.randn(1, 512, 768)
-    video_mask = torch.randn(1, 512)
-    prompt_embeddings = torch.randn(1, 512, 768)
+    video_embeddings = torch.randn(1, 1294, 768)
+    video_mask = torch.randn(1, 1294)
+    prompt_embeddings = torch.randn(1, 1, 768)
     score = model(video_embeddings, video_mask, prompt_embeddings)
     print(score.shape)
-# video feature shape: torch.Size([512, 1, 768])
-#  video_mask shape: torch.Size([512])
-# prompt_embeddings shape: torch.Size([1, 768])
+# video feature shape: torch.Size([x, 768])
+#  video_mask shape: torch.Size([x])
+# prompt_embeddings shape: torch.Size([768,])

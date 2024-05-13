@@ -15,7 +15,7 @@ num_heads:  8
 num_layers:  6
 
 image_size: 224
-max_video_length: 512
+max_video_length: 1294
 
 # optimizer
 init_lr: 1e-5
