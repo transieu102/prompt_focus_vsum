@@ -46,8 +46,6 @@ class Solver(object):
         return diversity_loss
 
     def train(self, split_ids: list = None):
-        print("Load config...")
-        self.load_config(self.config['config_path'])
         print("Load dataset...")
         self.load_dataset()
         print("Load split...")
@@ -58,20 +56,24 @@ class Solver(object):
             print('Begin training on split {}'.format(split_id))
             train_keys = self.split[split_id]['train_keys']
             self.initualize()
-            optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.config['init_lr'])
-            for epoch in range(self.config['max_epochs']):
+            optimizer = torch.optim.AdamW(self.model.parameters(), lr=float(self.config['init_lr']))
+            for epoch in range(self.config['max_epoch']):
                 cosine_lr_schedule(
                 optimizer,
                 epoch,
-                self.config["max_epoch"],
-                self.config["init_lr"],
-                self.config["min_lr"],
+                int(self.config["max_epoch"]),
+                float(self.config["init_lr"]),
+                float(self.config["min_lr"]),
                 )
                 self.model.train()
-                for video_id in tqdm(train_keys):
-                    video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings']).to(self.device)
-                    video_mask = torch.tensor(self.dataset[video_id]['video_mask']).to(self.device)
-                    prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embeddings']).to(self.device)
+                # for video_id in tqdm(train_keys):
+                for video_id in train_keys:
+                    video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings']).to(self.device).unsqueeze( 1)
+                    video_mask = torch.tensor(self.dataset[video_id]['video_mask']).to(self.device).unsqueeze(0)
+                    prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
+                    # print('video feature shape:', video_embeddings.shape)
+                    # print(' video_mask shape:', video_mask.shape)
+                    # print('prompt_embeddings shape:', prompt_embeddings.shape)
                     score = self.model(video_embeddings, video_mask, prompt_embeddings)
                     summary = generate_summary(score, self.dataset[video_id]['change_points'], self.dataset[video_id]['n_frames'], self.dataset[video_id]['n_frame_per_seg'], self.dataset[video_id]['picks'])
                     mask = [gt for frame_id, gt in enumerate(summary) if frame_id in self.dataset[video_id]['picks'] ]
@@ -82,8 +84,9 @@ class Solver(object):
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
+                    
 
-        
-
+# from train_solver import Solver
 solver = Solver()
+solver.load_config('/content/prompt_focus_vsum/config/promt_focus.yaml')
 solver.train()
