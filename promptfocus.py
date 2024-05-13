@@ -21,8 +21,10 @@ class PromptFocus(nn.Module):
         kernel_size=5,
         loss_type="cross_entropy",
         vit="base",
+        max_length=512, #max length of video
     ):
         super(PromptFocus, self).__init__()
+        self.max_length = max_length
         self.vit = vit
         assert vit in ["base", "large"]
         if vit == "base":
@@ -30,7 +32,7 @@ class PromptFocus(nn.Module):
         elif vit == "large":
             self.vision_width = 1024
         # create temporal transformer
-        self.position_embeddings = nn.Embedding(512, self.vision_width)
+        self.position_embeddings = nn.Embedding(max_length, self.vision_width)
         self.tt, tt_width = create_tt(self.vit, depth=tt_depth)
         assert tt_width == self.vision_width
 
@@ -59,7 +61,7 @@ class PromptFocus(nn.Module):
         self.linear = nn.Linear(self.vision_width, 1)
 
     def _interpolate_pos_embed(self, pos_embed, video_length):
-        if video_length > 512:
+        if video_length > self.max_length:
             pos_embed = torch.nn.functional.interpolate(
                 pos_embed[:, None, None, :].permute(1, 3, 0, 2),
                 size=(video_length, 1),
@@ -130,3 +132,6 @@ if __name__ == "__main__":
     prompt_embeddings = torch.randn(1, 512, 768)
     score = model(video_embeddings, video_mask, prompt_embeddings)
     print(score.shape)
+# video feature shape: torch.Size([512, 1, 768])
+#  video_mask shape: torch.Size([512])
+# prompt_embeddings shape: torch.Size([1, 768])
