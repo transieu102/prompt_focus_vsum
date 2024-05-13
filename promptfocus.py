@@ -85,7 +85,7 @@ class PromptFocus(nn.Module):
 
         # interpolate position embeddings
         position_embeddings = self._interpolate_pos_embed(
-            self.position_embeddings.weight, video_embeddings.size(1)
+            self.position_embeddings.weight, video_embeddings.size(0)
         )
         video_embeddings = video_embeddings + position_embeddings
 
@@ -124,14 +124,11 @@ class PromptFocus(nn.Module):
         return score
 
 
-if __name__ == "__main__":
-    model = PromptFocus()
-    # RANDOM video embeddings, video mask, prompt embeddings
-    video_embeddings = torch.randn(1, 1294, 768)
-    video_mask = torch.randn(1, 1294)
-    prompt_embeddings = torch.randn(1, 1, 768)
-    score = model(video_embeddings, video_mask, prompt_embeddings)
-    print(score.shape)
-# video feature shape: torch.Size([x, 768])
-#  video_mask shape: torch.Size([x])
-# prompt_embeddings shape: torch.Size([768,])
+# if __name__ == "__main__":
+#     model = PromptFocus()
+#     # RANDOM video embeddings, video mask, prompt embeddings
+#     video_embeddings = torch.randn(1294,1, 768)
+#     video_mask = torch.randn(1, 1294)
+#     prompt_embeddings = torch.randn(1, 1, 768)
+#     score = model(video_embeddings, video_mask, prompt_embeddings)
+#     print(score.shape)
