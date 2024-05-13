@@ -61,8 +61,8 @@ def train(model, data_loader, optimizer, epoch, device, args):
         optimizer.step()
 
         metric_logger.update(loss=loss.item())
-        metric_logger.update(loss_tsum=loss_tsum.item())
-        metric_logger.update(loss_vsum=loss_vsum.item())
+        # metric_logger.update(loss_tsum=loss_tsum.item())
+        # metric_logger.update(loss_vsum=loss_vsum.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
     # gather the stats from all processes
