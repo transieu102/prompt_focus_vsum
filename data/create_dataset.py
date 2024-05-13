@@ -35,10 +35,11 @@ def create_new_features(clip_version : str, h5_file_name : str, h5_new_file_name
             if not ret:
                 print("Error: Unable to read frame.")
                 return
-            feature = extract_features(frame, model, preprocessing)
-            # print(feature.shape)
+            feature = extract_features(frame, model, preprocessing).reshape(-1)
+            # print(feature.shape) 
             features.append(feature)
-            # print(len(features))
+        # print(len(features))
+
         cap.release()
         # video_embeddings, video_mask = pre_video(torch.tensor(features), max_frames=512)
         video_embeddings = torch.tensor(features)
