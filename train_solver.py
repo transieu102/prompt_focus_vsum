@@ -26,8 +26,9 @@ class Solver(object):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
     def initualize(self):
-        # self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-        self.device = "cpu"
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        print(self.device)
+        # self.device = "cpu"
         # fix the seed for reproducibility
         seed = 42
         torch.manual_seed(seed)
@@ -76,24 +77,29 @@ class Solver(object):
                 self.model.train()
                 # for video_id in tqdm(train_keys):
                 for video_id in train_keys:
-                    video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings']).to(self.device).unsqueeze(1)
-                    video_mask = torch.tensor(self.dataset[video_id]['video_mask']).to(self.device).unsqueeze(0)
+                    video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
+                    video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
                     prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
                     
                     # print('video feature shape:', video_embeddings.shape)
                     # print(' video_mask shape:', video_mask.shape)
                     # print('prompt_embeddings shape:', prompt_embeddings.shape)
-                    score = self.model(video_embeddings, video_mask, prompt_embeddings)
+                    score, video_embeddings_dec = self.model(video_embeddings, video_mask, prompt_embeddings)
                     score = score.detach().cpu().numpy().squeeze(0).squeeze(1)
-                    print("score",score.shape)
-                    summary,_ = generate_summary(score, self.dataset[video_id]['change_points'], self.dataset[video_id]['n_frames'], self.dataset[video_id]['n_frame_per_seg'], self.dataset[video_id]['picks'])
-                    print(np.array(summary).shape)
+                    summary,_ = generate_summary(
+                        score, 
+                        self.dataset[video_id]['change_points'], 
+                        self.dataset[video_id]['n_frames'], 
+                        self.dataset[video_id]['n_frame_per_seg'], 
+                        self.dataset[video_id]['picks']
+                        )
                     mask = [gt for frame_id, gt in enumerate(summary) if frame_id in self.dataset[video_id]['picks'] ]
-                    represented_features = represent_features(mask, video_embeddings)
+                    represented_features = represent_features(mask, video_embeddings_dec)
                     representativeness_loss = self.representativeness_loss(represented_features, video_embeddings)
-                    diversity_loss = self.diversity_loss(video_embeddings[mask == 1])
-                    # loss = representativeness_loss + diversity_loss
-                    loss =  diversity_loss
+                    # diversity_loss = self.diversity_loss(video_embeddings_dec[mask == 1])
+                    loss = representativeness_loss 
+                    # loss.requires_grad = True
+                    print('Loss:', loss)
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()

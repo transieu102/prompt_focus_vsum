@@ -4,6 +4,39 @@ from sklearn.metrics import precision_recall_curve, f1_score
 
 from scipy.stats import kendalltau, spearmanr
 from scipy.stats import rankdata
+
+def knapsack_dp(values,weights,n_items,capacity,return_all=False):
+
+    table = np.zeros((n_items+1,capacity+1),dtype=np.float32)
+    keep = np.zeros((n_items+1,capacity+1),dtype=np.float32)
+
+    for i in range(1,n_items+1):
+        for w in range(0,capacity+1):
+            wi = weights[i-1] # weight of current item
+            vi = values[i-1] # value of current item
+            if (wi <= w) and (vi + table[i-1,w-wi] > table[i-1,w]):
+                table[i,w] = vi + table[i-1,w-wi]
+                keep[i,w] = 1
+            else:
+                table[i,w] = table[i-1,w]
+
+    picks = []
+    K = capacity
+
+    for i in range(n_items,0,-1):
+        if keep[i,K] == 1:
+            picks.append(i)
+            K -= weights[i-1]
+
+    picks.sort()
+    picks = [x-1 for x in picks] # change to 0-index
+
+    if return_all:
+        max_val = table[n_items,capacity]
+        return picks,max_val
+    return picks
+
+
 def cosine_lr_schedule(optimizer, epoch, max_epoch, init_lr, min_lr):
     """Decay the learning rate"""
     lr = (init_lr - min_lr) * 0.5 * (1. + math.cos(math.pi * epoch / max_epoch)) + min_lr
@@ -27,18 +60,19 @@ def step_lr_schedule(optimizer, epoch, init_lr, min_lr, decay_rate):
 def represent_features(mask, video_embeddings):
     for i in range(len(mask)):
         if mask[i] == 0:
-            video_embeddings[i] = video_embeddings[i] * 0
+            video_embeddings[i] = video_embeddings[i] * 0.
     return video_embeddings
 
 
 import numpy as np
 from ortools.algorithms.python import knapsack_solver
 
-solver = knapsack_solver.KnapsackSolver(
-            knapsack_solver.SolverType.KNAPSACK_MULTIDIMENSION_BRANCH_AND_BOUND_SOLVER,
-            "KnapsackExample")
+
 
 def knapsack_ortools(values, weights, items, capacity ):
+    solver = knapsack_solver.KnapsackSolver(
+            knapsack_solver.SolverType.KNAPSACK_MULTIDIMENSION_BRANCH_AND_BOUND_SOLVER,
+            "KnapsackExample")
     scale = 1000
     values = np.array(values)
     weights = np.array(weights)
@@ -95,8 +129,8 @@ def generate_summary(ypred, cps, n_frames, nfps, positions, proportion=0.15, met
     limits = int(math.floor(n_frames * proportion))
 
     if method == 'knapsack':
-        #picks = knapsack_dp(seg_score, nfps, n_segs, limits)
-        picks = knapsack_ortools(seg_score, nfps, n_segs, limits)
+        picks = knapsack_dp(seg_score, nfps, n_segs, limits)
+        # picks = knapsack_ortools(seg_score, nfps, n_segs, limits)
     elif method == 'rank':
         order = np.argsort(seg_score)[::-1].tolist()
         picks = []
