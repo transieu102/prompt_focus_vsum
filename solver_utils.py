@@ -6,7 +6,16 @@ from scipy.stats import kendalltau, spearmanr
 from scipy.stats import rankdata
 
 def knapsack_dp(values,weights,n_items,capacity,return_all=False):
-
+    min_value = np.min(values)
+    if min_value < 0:
+      values = np.array(values) - min_value
+    # print(values
+    # print(weights[0:5])
+    # print(values[0:5])
+    # print(n_items)
+    # print(capacity)
+    # check inputs
+    # check_inputs(values,weights,n_items,capacity)
     table = np.zeros((n_items+1,capacity+1),dtype=np.float32)
     keep = np.zeros((n_items+1,capacity+1),dtype=np.float32)
 
@@ -57,12 +66,40 @@ def step_lr_schedule(optimizer, epoch, init_lr, min_lr, decay_rate):
 
 
 
-def represent_features(mask, video_embeddings):
-    for i in range(len(mask)):
-        if mask[i] == 0:
-            video_embeddings[i] = video_embeddings[i] * 0.
-    return video_embeddings
+# def represent_features(mask, video_embeddings):
+#     for i in range(len(mask)):
+#         if mask[i] == 0:
+#             video_embeddings[i] = video_embeddings[i] * 0.
+#     return video_embeddings
+import torch
 
+def represent_features(mask, video_embeddings, change_points: list, positions: list):
+    video_average_feature = torch.zeros(video_embeddings[0].shape)
+    filled_map = torch.zeros(len(change_points))
+    for segment_idx, segment in enumerate(change_points):
+        start, end = segment
+        average_feature = torch.zeros(video_embeddings[0].shape)
+        selected_count = 0
+        for i in range(start, end+1):
+            if i in positions and mask[positions.index(i)] == 1:
+                video_average_feature += video_embeddings[positions.index(i)]
+                average_feature += video_embeddings[positions.index(i)]
+                selected_count += 1
+        if selected_count > 0:
+            average_feature /= selected_count
+            for j in range(start, end+1):
+                if j in positions and mask[positions.index(j)] == 0:
+                    video_embeddings[positions.index(j)] = average_feature
+            filled_map[segment_idx] = 1
+    video_average_feature /= np.sum(mask)
+    # print(np.sum(mask))
+    for segment_idx, segment in enumerate(change_points):
+        if filled_map[segment_idx] == 0:
+            start, end = segment
+            for i in range(start, end+1):
+                if i in positions and mask[positions.index(i)] == 0:
+                    video_embeddings[positions.index(i)] = video_average_feature
+    return video_embeddings
 
 import numpy as np
 from ortools.algorithms.python import knapsack_solver
@@ -210,4 +247,37 @@ def evaluate_summary(machine_summary, user_summary, eval_metric='avg'):
         final_rec = rec_arr[max_idx]
 
     return final_f_score, final_prec, final_rec
+
+from scipy.stats import kendalltau, spearmanr
+from scipy.stats import rankdata
+from collections import Counter
+
+def get_rc_func(metric = "kendalltau"):
+    if metric == "kendalltau":
+        f = lambda x, y: kendalltau(rankdata(-x), rankdata(-y))
+    elif metric == "spearman":
+        f = lambda x, y: spearmanr(x, y)
+    else:
+        raise RuntimeError
+    return f
+
+def calculate_rank_order_statistics(
+    frame_scores: list,
+    user_anno: list,
+    metric
+) -> float:
+  """
+  Calculate rank_order_statistics by
+  compare each user annotate with frame_scores
+  """
+  list_coeff = []
+  frame_scores = np.array(frame_scores)
+
+  corr_func = get_rc_func(metric)
+  for idx in range(len(user_anno)):
+    true_user_score = user_anno[idx]
+    coeff, _ = corr_func(frame_scores,true_user_score)
+    list_coeff.append(coeff)
+
+  return np.array(list_coeff).mean()
 

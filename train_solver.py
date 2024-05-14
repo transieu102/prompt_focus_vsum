@@ -12,7 +12,10 @@ import torch.nn.functional as F
 from solver_utils import (
     cosine_lr_schedule,
     generate_summary,
-    represent_features
+    represent_features,
+    evaluate_summary,
+    calculate_rank_order_statistics
+
 
 )
 
@@ -21,7 +24,8 @@ def count_parameters(model):
 
 class Solver(object):
     def __init__(self):
-        self.model = None
+        self.model = Nones
+        self.evaluate_result = {}
     def load_config(self, config_path):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -44,13 +48,15 @@ class Solver(object):
             self.split = json.load(f)
 
     def representativeness_loss(self, outputs, targets):
+        # print(outputs, targets)
         criterion = nn.MSELoss()
         return criterion(outputs, targets)
 
     def diversity_loss(self, features):
+        # print(features[:5])
         similarity_matrix = F.cosine_similarity(features.unsqueeze(1), features.unsqueeze(0), dim=-1)
         # Compute diversity loss (negative sum of similarities)
-        diversity_loss = -torch.sum(similarity_matrix) / (features.size(0) * (features.size(0) - 1))
+        diversity_loss = torch.sum(similarity_matrix) / (features.size(0) * (features.size(0) - 1))
         return diversity_loss
 
     def train(self, split_ids: list = None):
@@ -65,6 +71,7 @@ class Solver(object):
             train_keys = self.split[split_id]['train_keys']
             model_vram = torch.cuda.memory_allocated()
             self.initualize()
+            
             optimizer = torch.optim.AdamW(self.model.parameters(), lr=float(self.config['init_lr']))
             for epoch in range(self.config['max_epoch']):
                 cosine_lr_schedule(
@@ -94,18 +101,66 @@ class Solver(object):
                         self.dataset[video_id]['picks']
                         )
                     mask = [gt for frame_id, gt in enumerate(summary) if frame_id in self.dataset[video_id]['picks'] ]
-                    represented_features = represent_features(mask, video_embeddings_dec)
+                    represented_features = represent_features(mask, video_embeddings_dec, [z for z in self.dataset[video_id]['change_points']], [z for z in self.dataset[video_id]['picks']])
                     representativeness_loss = self.representativeness_loss(represented_features, video_embeddings)
-                    # diversity_loss = self.diversity_loss(video_embeddings_dec[mask == 1])
-                    loss = representativeness_loss 
+                    diversity_loss = self.diversity_loss(video_embeddings_dec[np.array(mask) == 1])
+                    loss = diversity_loss + representativeness_loss
+                    # loss = representativeness_loss 
                     # loss.requires_grad = True
                     print('Loss:', loss)
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
+                if epoch % 10 == 0:
+                  print('Epoch:', epoch)
+                  self.evaluate(split_id)
+    def evaluate(self, split_id):
+            self.model.eval()
+            test_keys = self.split[split_id]['test_keys']
+            split_f1 = []
+            split_kscore = []
+            split_spearn = []
+            for video_id in test_keys:
+                video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
+                video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
+                prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
+                score, _ = self.model(video_embeddings, video_mask, prompt_embeddings)
+                score = score.detach().cpu().numpy().squeeze(0).squeeze(1)
+                # print(self.dataset[video_id].keys())
+                summary, framescores = generate_summary(
+                            score, 
+                            self.dataset[video_id]['change_points'], 
+                            self.dataset[video_id]['n_frames'], 
+                            self.dataset[video_id]['n_frame_per_seg'], 
+                            self.dataset[video_id]['picks']
+                            )
+                final_f_score, final_prec, final_rec = evaluate_summary(summary, self.dataset[video_id]['user_summary'])
+                split_f1.append(final_f_score)
+                # user_anno = get_user_anno_tvsum(annot=annot, video_name=video_id)
+                user_anno =self.dataset[video_id]['user_anno'][()].T
+    
+                # tính kendalltau score
+                kscore = calculate_rank_order_statistics(frame_scores=framescores,user_anno=user_anno, metric="kendalltau")
+                # kscores.append(kscore)
+                split_kscore.append(kscore)
 
 
+                # tính kendalltau score
+                sscore = calculate_rank_order_statistics(frame_scores=framescores, user_anno=user_anno, metric="spearman")
+                # sscores.append(sscore)
+                split_spearn.append(sscore)
+            print("Split ", split_id)        
+            print('F-score:', np.mean(final_f_score))
+            print('kendalltau score:', np.mean(kscore))
+            print('spearman score:', np.mean(sscore))
+            self.evaluate_result[split_id] = [np.mean(final_f_score), np.mean(kscore), np.mean(sscore)]
+            self.save_model(self.config['save_dir'] + '/' + f"model_tvsum_{split_id}_{np.mean(final_f_score)}_{np.mean(kscore)}_{np.mean(sscore)}" + '.pt')
 
+    def save_model(self, path):
+        torch.save(self.model, path)
+
+    def load_model(self, path):
+        return torch.load(path)
 solver = Solver()
-solver.load_config('/MLCV/haov/projects/video-sum/prompt_focus_vsum/config/promt_focus.yaml')
+solver.load_config('config/promt_focus.yaml')
 solver.train()

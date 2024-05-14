@@ -24,3 +24,5 @@ max_epoch: 28
 batch_size: 1
 weight_decay: 0.05
 
+#save path 
+save_dir : 'checkpoints'
