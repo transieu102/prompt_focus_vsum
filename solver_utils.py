@@ -73,12 +73,14 @@ def step_lr_schedule(optimizer, epoch, init_lr, min_lr, decay_rate):
 #     return video_embeddings
 import torch
 
-def represent_features(mask, video_embeddings, change_points: list, positions: list):
+def represent_features(mask, video_embeddings, change_points: list, positions: list, device: str):
     video_average_feature = torch.zeros(video_embeddings[0].shape)
+    video_average_feature = video_average_feature.to(device)
     filled_map = torch.zeros(len(change_points))
     for segment_idx, segment in enumerate(change_points):
         start, end = segment
         average_feature = torch.zeros(video_embeddings[0].shape)
+        average_feature = average_feature.to(device)
         selected_count = 0
         for i in range(start, end+1):
             if i in positions and mask[positions.index(i)] == 1:

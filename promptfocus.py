@@ -59,6 +59,7 @@ class PromptFocus(nn.Module):
         self.kernel_size = kernel_size
 
         self.linear = nn.Linear(self.vision_width, 1)
+        self.sigmod = nn.Sigmoid()
     def _interpolate_pos_embed(self, pos_embed, video_length):
         if video_length > self.max_length:
             pos_embed = torch.nn.functional.interpolate(

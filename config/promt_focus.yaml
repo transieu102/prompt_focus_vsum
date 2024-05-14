@@ -1,4 +1,4 @@
-dataset_path: '/MLCV/haov/projects/video-sum/eccv16_dataset_tvsum_google_pool5_sumprompt_clip_L14.h5'
+dataset_path: '/MLCV/haov/projects/video-sum/prompt_focus_vsum/eccv16_dataset_tvsum_google_pool5_sumprompt_clip_L14_useranno_virtualgt.h5'
 split_path : '/MLCV/haov/projects/video-sum/tvsum_splits.json'
 
 
