@@ -8,7 +8,7 @@ from torch.nn import (
     # TransformerDecoder,
     # TransformerDecoderLayer,
 )
-
+from sklearn.pairwise import cosine_similarity
 from models.transformer_decoder.transformer_decoder import LocalAttenModule
 
 
@@ -73,7 +73,7 @@ class PromptFocus(nn.Module):
 
         return pos_embed
 
-    def forward(self, video_embeddings, video_mask, prompt_embeddings):
+    def forward(self, video_embeddings, video_mask, prompt_embeddings, similarity_scores):
         """
 
         Args:
@@ -95,6 +95,11 @@ class PromptFocus(nn.Module):
         video_embeddings = self.tt(video_embeddings, video_mask)  # shape dont change
         
 
+        # similarity weight
+        for feature in video_embeddings:
+
+            similarity_score = cosine_similarity(feature.detach().cpu().numpy(), prompt_embeddings.detach().cpu().numpy())
+            feature = feature * similarity_score
         # multihead attention
         # TODO: gen caption from video & input to attention heads
         # prompt_embeddings = self.prompt_linear(prompt_embeddings)
@@ -127,12 +132,12 @@ class PromptFocus(nn.Module):
         return score, video_embeddings_dec.permute(1, 0, 2)
 
 
-if __name__ == "__main__":
-    model = PromptFocus()
-    model.to("cuda")
-    # RANDOM video embeddings, video mask, prompt embeddings
-    video_embeddings = torch.randn(1294,1, 768).to("cuda")
-    video_mask = torch.randn(1, 1294).to("cuda")
-    prompt_embeddings = torch.randn(1, 1, 768).to("cuda")
-    score = model(video_embeddings, video_mask, prompt_embeddings)
-    print(score.shape)
+# if __name__ == "__main__":
+#     model = PromptFocus()
+#     model.to("cuda")
+#     # RANDOM video embeddings, video mask, prompt embeddings
+#     video_embeddings = torch.randn(1294,1, 768).to("cuda")
+#     video_mask = torch.randn(1, 1294).to("cuda")
+#     prompt_embeddings = torch.randn(1, 1, 768).to("cuda")
+#     score = model(video_embeddings, video_mask, prompt_embeddings)
+#     print(score.shape)
