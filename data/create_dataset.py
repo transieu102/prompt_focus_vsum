@@ -1,9 +1,11 @@
-from data.data_tools import *
-from data.utils import pre_video
-import clip
+from data_tools import *
+from utils import pre_video
+# import clip
 import torch
 import cv2
 from tqdm import tqdm
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 import os
 def create_new_features(clip_version : str, h5_file_name : str, h5_new_file_name : str, video_original_dir: str) -> None:
     """
@@ -55,3 +57,38 @@ def create_new_features(clip_version : str, h5_file_name : str, h5_new_file_name
         prompt_embeddings /= len(features)
         data[video_id]['prompt_embedding'] = prompt_embeddings
     create_h5_file(data.keys(), data, h5_new_file_name)
+
+def add_virtual_gtscores(h5_file_name : str, h5_new_file_name : str) -> None:
+    #similarity
+    data = read_h5_file(h5_file_name)
+    for video_id in data.keys():
+        concept_vector = data[video_id]['prompt_embedding']
+        # print(concept_vector.shape)
+        # print(data[video_id]['video_embeddings'][0].shape)
+        similarity_scores = np.array([cosine_similarity(concept_vector.reshape(1, -1), data[video_id]['video_embeddings'][i].reshape(1, -1))[0][0] for i in range(len(data[video_id]['video_embeddings']))])
+        data[video_id]['similarity_scores'] = similarity_scores
+    
+    #diversity
+    alpha = 0.05
+    for video_id in data.keys():
+        diversity_scores = []
+        n_frames = len(data[video_id]['video_embeddings'])
+        scope = int(alpha*n_frames)
+        for frame_id, frame_embedding in enumerate(data[video_id]['video_embeddings']):
+            start = max(0, frame_id - scope)
+            end = min(n_frames - 1, frame_id + scope)
+            similarity_score = []
+            for other_frame_id in range(start, end + 1):
+                if other_frame_id != frame_id:
+                    similarity_score.append(cosine_similarity(frame_embedding.reshape(1, -1), data[video_id]['video_embeddings'][other_frame_id].reshape(1, -1)))
+            diversity_scores.append(-np.mean(similarity_score))
+        data[video_id]['diversity_scores'] = diversity_scores
+    create_h5_file(data.keys(), data, h5_new_file_name)
+add_virtual_gtscores('dataset/eccv16_dataset_tvsum_google_pool5_sumprompt_clip_L14_useranno.h5', 'dataset/eccv16_dataset_tvsum_google_pool5_sumprompt_clip_L14_useranno_virtualgt.h5')
+
+# data = read_h5_file('dataset/eccv16_dataset_tvsum_google_pool5_sumprompt_clip_L14_useranno_virtualgt.h5')
+# for video_id in data.keys():
+#     data[video_id]['similarity_scores'] = np.array([int(i) for i in data[video_id]['similarity_scores']])
+#     # print(data[video_id]['similarity_scores'].shape)
+#     # break
+# create_h5_file(data.keys(), data, 'dataset/eccv16_dataset_tvsum_google_pool5_sumprompt_clip_L14_useranno_virtualgt.h5')
