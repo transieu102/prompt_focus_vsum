@@ -2,12 +2,14 @@ from data.data_tools import read_h5_file
 from promptfocus import PromptFocus
 import yaml
 import os
+import csv
 import torch
 import numpy as np
 import random
 import torch.backends.cudnn as cudnn
 import json
 from tqdm import tqdm
+from collections import Counter
 import torch.nn as nn
 import torch.nn.functional as F
 from solver_utils import (
@@ -19,6 +21,26 @@ from solver_utils import (
 
 
 )
+
+def get_user_anno_tvsum(
+    annot: list,
+    video_name: str
+) -> list :
+    user = int(video_name.split("_")[-1])
+
+    annotation_length = list(Counter(np.array(annot)[:, 0]).values())[user-1]
+    init = (user - 1) * annotation_length
+    till = user * annotation_length
+
+    user_scores = []
+    for row in annot[init:till]:
+        curr_user_score = row[2].split(",")
+        curr_user_score = np.array([float(num) for num in curr_user_score])
+        curr_user_score = curr_user_score / curr_user_score.max(initial=-1)  # Normalize scores between 0 and 1
+        # curr_user_score = curr_user_score[::15] # REMOVE-ME
+
+        user_scores.append(curr_user_score)
+    return user_scores
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -42,6 +64,7 @@ class Solver(object):
         cudnn.benchmark = True
         self.model = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], 
         max_length=self.config['max_video_length']).to(self.device)
+
     def load_dataset(self):
         self.dataset = read_h5_file(self.config['dataset_path'])
     def load_split(self):
@@ -67,12 +90,14 @@ class Solver(object):
         self.load_split()
         if split_ids is None:
             split_ids = [i for i in range(len(self.split))]
-        for split_id in split_ids:
+        # for split_id in split_ids:
+        for split_id in [4]:
             print('Begin training on split {}'.format(split_id))
             train_keys = self.split[split_id]['train_keys']
             model_vram = torch.cuda.memory_allocated()
             self.initualize()
-            
+            self.evaluate(split_id, -1)
+            input()
             optimizer = torch.optim.AdamW(self.model.parameters(), lr=float(self.config['init_lr']))
             criterion = nn.MSELoss()
 
@@ -90,7 +115,10 @@ class Solver(object):
                     video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
                     video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
                     prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
-                    
+                    print("video_embeddings",video_embeddings.shape)
+                    print("video_mask",video_mask.shape)
+                    print("prompt_embeddings",prompt_embeddings.shape)
+
                     # print('video feature shape:', video_embeddings.shape)
                     # print(' video_mask shape:', video_mask.shape)
                     # print('prompt_embeddings shape:', prompt_embeddings.shape)
@@ -114,10 +142,8 @@ class Solver(object):
                     # representativeness_loss = self.representativeness_loss(represented_features, video_embeddings)
                     # diversity_loss = self.diversity_loss(video_embeddings_dec[np.array(mask) == 1])
 
-                    label = torch.tensor(self.dataset[video_id]['similarity_scores'], dtype=torch.float32).to(self.device)
+                    label = torch.tensor(self.dataset[video_id]['gtscore'], dtype=torch.float32).to(self.device)
                     label = label.unsqueeze(0).unsqueeze(2)
-                    print(score.shape)
-                    print(label.shape)
                     # print(label)
 
                     loss = criterion(score, label) 
@@ -133,7 +159,6 @@ class Solver(object):
                   self.evaluate(split_id, epoch)
                   input()
     def evaluate(self, split_id, epoch: int):
-            self.model.eval()
             test_keys = self.split[split_id]['test_keys']
             split_f1 = []
             split_kscore = []
@@ -144,8 +169,9 @@ class Solver(object):
                 video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
                 prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
                 score, _ = self.model(video_embeddings, video_mask, prompt_embeddings)
+                # print(_)
+                
                 score = score.detach().cpu().numpy().squeeze(0).squeeze(1)
-                # print(score)
                 # print(self.dataset[video_id].keys())
                 summary, framescores = generate_summary(
                             score, 
@@ -166,7 +192,6 @@ class Solver(object):
                     
                     )
                 split_f1.append(final_f_score)
-                # user_anno = get_user_anno_tvsum(annot=annot, video_name=video_id)
                 user_anno =self.dataset[video_id]['user_anno'][()].T
     
                 # tính kendalltau score
