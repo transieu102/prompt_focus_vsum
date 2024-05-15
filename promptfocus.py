@@ -8,7 +8,7 @@ from torch.nn import (
     # TransformerDecoder,
     # TransformerDecoderLayer,
 )
-from sklearn.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity
 from models.transformer_decoder.transformer_decoder import LocalAttenModule
 
 
@@ -73,7 +73,7 @@ class PromptFocus(nn.Module):
 
         return pos_embed
 
-    def forward(self, video_embeddings, video_mask, prompt_embeddings, similarity_scores):
+    def forward(self, video_embeddings, video_mask, prompt_embeddings):
         """
 
         Args:
@@ -96,9 +96,12 @@ class PromptFocus(nn.Module):
         
 
         # similarity weight
-        for feature in video_embeddings:
-
-            similarity_score = cosine_similarity(feature.detach().cpu().numpy(), prompt_embeddings.detach().cpu().numpy())
+        for idx in range(video_embeddings.shape[1]):
+            feature = video_embeddings[:, idx, :]
+            similarity_score = cosine_similarity(
+                feature.detach().cpu().numpy(), 
+                prompt_embeddings.squeeze(0).detach().cpu().numpy()
+            )[0][0]
             feature = feature * similarity_score
         # multihead attention
         # TODO: gen caption from video & input to attention heads
@@ -112,8 +115,6 @@ class PromptFocus(nn.Module):
         # video_embeddings_enc = self.transformer_encoder(video_embeddings_attn)
         video_embeddings_enc = self.transformer_encoder(video_embeddings)
         
-
-
         attention_mask = torch.zeros([video_len, video_len])
         half_atten_len = min(self.kernel_size // 2 + 1, video_len)
         for j in range(half_atten_len):
