@@ -20,7 +20,7 @@ max_video_length: 1294
 # optimizer
 init_lr: 1e-5
 min_lr: 0
-max_epoch: 28
+max_epoch: 30
 batch_size: 1
 weight_decay: 0.05
 

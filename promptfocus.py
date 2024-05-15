@@ -93,6 +93,7 @@ class PromptFocus(nn.Module):
         video_embeddings = video_embeddings + position_embeddings
         # temporal transformer
         video_embeddings = self.tt(video_embeddings, video_mask)  # shape dont change
+        
 
         # multihead attention
         # TODO: gen caption from video & input to attention heads

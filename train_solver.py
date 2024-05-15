@@ -89,6 +89,8 @@ class Solver(object):
         self.load_dataset()
         print("Load split...")
         self.load_split()
+        self.initualize()
+        self.evaluate_all_split()
         if split_ids is None:
             split_ids = [i for i in range(len(self.split))]
         for split_id in split_ids:
@@ -96,10 +98,9 @@ class Solver(object):
             print('Begin training on split {}'.format(split_id))
             train_keys = self.split[split_id]['train_keys']
             model_vram = torch.cuda.memory_allocated()
-            self.initualize()
             self.evaluate(split_id, -1)
             # input()
-            optimizer = torch.optim.AdamW(self.model.parameters(), lr=float(self.config['init_lr']))
+            optimizer = torch.optim.AdamW(self.models[split_id].parameters(), lr=float(self.config['init_lr']))
             criterion = nn.MSELoss()
 
             for epoch in range(self.config['max_epoch']):
@@ -110,7 +111,7 @@ class Solver(object):
                 float(self.config["init_lr"]),
                 float(self.config["min_lr"]),
                 )
-                self.model.train()
+                self.models[split_id].train()
                 # for video_id in tqdm(train_keys):
                 for video_id in tqdm(train_keys):
                     video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
@@ -154,9 +155,9 @@ class Solver(object):
                     optimizer.zero_grad()
                     loss.backward(retain_graph = True)
                     optimizer.step()
-                # if epoch % 10 == 0:
-                #   print('Epoch:', epoch)
-                #   print('Loss:', loss)
+                if epoch % 10 == 0:
+                    print('Epoch:', epoch)
+                    print('Loss:', loss)
                     self.evaluate(split_id, epoch)
         self.evaluate_all_split()
                 #   input()
@@ -210,14 +211,14 @@ class Solver(object):
             print('F-score:', np.mean(final_f_score))
             print('kendalltau score:', np.mean(kscore))
             print('spearman score:', np.mean(sscore))
-            self.evaluate_result[split_id] = [np.mean(final_f_score), np.mean(kscore), np.mean(sscore)]
+            # self.evaluate_result[split_id] = [np.mean(final_f_score), np.mean(kscore), np.mean(sscore)]
             
-            os.makedirs(self.config['save_dir'], exist_ok=True)
-            self.save_model(self.config['save_dir'] + '/' + f"model_tvsum_{split_id}_{np.mean(final_f_score)}_{np.mean(kscore)}_{np.mean(sscore)}_{epoch}" + '.pt')
+            # os.makedirs(self.config['save_dir'], exist_ok=True)
+            # self.save_model(self.config['save_dir'] + '/' + f"model_tvsum_{split_id}_{np.mean(final_f_score)}_{np.mean(kscore)}_{np.mean(sscore)}_{epoch}" + '.pt')
     def evaluate_all_split(self):
         f1 = []
-        kscore = []
-        spearn = []
+        ks = []
+        sp = []
         for split_id in range(len(self.split)):
             test_keys = self.split[split_id]['test_keys']
             split_f1 = []
@@ -270,19 +271,19 @@ class Solver(object):
             print('spearman score:', np.mean(sscore))
             # self.evaluate_result[split_id] = [np.mean(final_f_score), np.mean(kscore), np.mean(sscore)]
             f1.append(np.mean(final_f_score))
-            kscore.append(np.mean(kscore))
-            spearn.append(np.mean(sscore))
+            ks.append(np.mean(kscore))
+            sp.append(np.mean(sscore))
         print("Average:")
         print('F-score:', np.mean(f1))
-        print('kendalltau score:', np.mean(kscore))
-        print('spearman score:', np.mean(spearn))
+        print('kendalltau score:', np.mean(ks))
+        print('spearman score:', np.mean(sp))
             # os.makedirs(self.config['save_dir'], exist_ok=True)
             # self.save_model(self.config['save_dir'] + '/' + f"model_tvsum_{split_id}_{np.mean(final_f_score)}_{np.mean(kscore)}_{np.mean(sscore)}_{epoch}" + '.pt')
-    def save_model(self, path):
-        torch.save(self.model, path)
+    # def save_model(self, path):
+    #     torch.save(self.model, path)
 
-    def load_model(self, path):
-        return torch.load(path)
+    # def load_model(self, path):
+    #     return torch.load(path)
 solver = Solver()
 solver.load_config('config/promt_focus.yaml')
 solver.train()
