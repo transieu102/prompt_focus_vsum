@@ -129,7 +129,7 @@ class VideoTransformer(nn.Module):
         _load_weights(self, checkpoint_path, prefix)
 
 
-def create_tt(vit, use_grad_checkpointing=False, ckpt_layer=0, drop_path_rate=0, depth=1):
+def create_tt(vit, num_heads, use_grad_checkpointing=False, ckpt_layer=0, drop_path_rate=0, depth=1):
     ''' Create a temporal transformer model
     Args:
         vit: base or large
@@ -149,7 +149,7 @@ def create_tt(vit, use_grad_checkpointing=False, ckpt_layer=0, drop_path_rate=0,
 
     temporal_transformer = VideoTransformer(
         embed_dim=transformer_width, depth=depth,
-        num_heads=transformer_width // 64, use_grad_checkpointing=use_grad_checkpointing,
+        num_heads=num_heads, use_grad_checkpointing=use_grad_checkpointing,
         ckpt_layer=ckpt_layer, drop_path_rate=0 or drop_path_rate)
 
     return temporal_transformer, transformer_width

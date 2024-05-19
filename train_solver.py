@@ -90,7 +90,7 @@ class Solver(object):
         print("Load split...")
         self.load_split()
         self.initualize()
-        self.evaluate_all_split()
+        # self.evaluate_all_split()
         if split_ids is None:
             split_ids = [i for i in range(len(self.split))]
         for split_id in split_ids:
@@ -116,7 +116,7 @@ class Solver(object):
                 for video_id in tqdm(train_keys):
                     video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
                     video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
-                    prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
+                    prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding'], dtype=torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
                     # print("video_embeddings",video_embeddings.shape)
                     # print("video_mask",video_mask.shape)
                     # print("prompt_embeddings",prompt_embeddings.shape)
@@ -148,7 +148,7 @@ class Solver(object):
                     label = label.unsqueeze(0).unsqueeze(2)
                     # print(label)
 
-                    loss = criterion(score, label) 
+                    loss = criterion(score, label)  
                     # print
                     # loss = representativeness_loss 
                     # loss.requires_grad = True
@@ -170,7 +170,7 @@ class Solver(object):
             for video_id in test_keys:
                 video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
                 video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
-                prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
+                prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding'] , dtype=torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
                 score, _ = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
                 # print(_)
                 
@@ -228,7 +228,7 @@ class Solver(object):
             for video_id in test_keys:
                 video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
                 video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
-                prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding']).to(self.device).unsqueeze(0).unsqueeze(0)
+                prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding'], dtype=torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
                 score, _ = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
                 # print(_)
                 

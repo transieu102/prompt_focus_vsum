@@ -1,5 +1,6 @@
 import torch
-from torch import nn
+from inspect import isfunction
+from torch import nn, einsum
 from models.temporal_transformer.temporal_transformer import create_tt
 from torch.nn import MultiheadAttention
 from torch.nn import (
@@ -8,9 +9,68 @@ from torch.nn import (
     # TransformerDecoder,
     # TransformerDecoderLayer,
 )
+from einops import rearrange, repeat
 from sklearn.metrics.pairwise import cosine_similarity
 from models.transformer_decoder.transformer_decoder import LocalAttenModule
 
+def exists(val):
+    return val is not None
+
+def default(val, d):
+    if exists(val):
+        return val
+    return d() if isfunction(d) else d
+
+class CrossAttention(nn.Module):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.):
+        super().__init__()
+        inner_dim = dim_head * heads
+        context_dim = default(context_dim, query_dim)
+
+        self.scale = dim_head ** -0.5
+        self.heads = heads
+
+        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, query_dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x, context=None, mask=None):
+        h = self.heads
+
+        q = self.to_q(x)
+        context = default(context, x)
+        k = self.to_k(context)
+        v = self.to_v(context)
+
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
+
+        # force cast to fp32 to avoid overflowing
+        # if _ATTN_PRECISION =="fp32":
+        with torch.autocast(enabled=False, device_type = 'cuda'):
+            q, k = q.float(), k.float()
+            sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+        # else:
+            # sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+        
+        del q, k
+    
+        if exists(mask):
+            mask = rearrange(mask, 'b ... -> b (...)')
+            max_neg_value = -torch.finfo(sim.dtype).max
+            mask = repeat(mask, 'b j -> (b h) () j', h=h)
+            sim.masked_fill_(~mask, max_neg_value)
+
+        # attention, what we cannot get enough of
+        sim = sim.softmax(dim=-1)
+
+        out = einsum('b i j, b j d -> b i d', sim, v)
+        out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
+        return self.to_out(out)
 
 class PromptFocus(nn.Module):
     def __init__(
@@ -33,7 +93,7 @@ class PromptFocus(nn.Module):
             self.vision_width = 1024
         # create temporal transformer
         self.position_embeddings = nn.Embedding(max_length, self.vision_width)
-        self.tt, tt_width = create_tt(self.vit, depth=tt_depth)
+        self.tt, tt_width = create_tt(self.vit,num_heads=16, depth=tt_depth)
         assert tt_width == self.vision_width
 
         # process prompt
@@ -59,6 +119,14 @@ class PromptFocus(nn.Module):
         self.kernel_size = kernel_size
 
         self.linear = nn.Linear(self.vision_width, 1)
+
+        self.cross_attention = CrossAttention(
+            query_dim=self.vision_width,
+            context_dim=self.vision_width,
+            heads=16,
+            dim_head=self.vision_width,
+            dropout=0.3,
+        )
         # self.sigmod = nn.Sigmoid()
     def _interpolate_pos_embed(self, pos_embed, video_length):
         if video_length > self.max_length:
@@ -85,6 +153,11 @@ class PromptFocus(nn.Module):
         video_len = video_embeddings.size(0)
 
         video_embeddings = video_embeddings.permute(1, 0, 2)
+
+        video_embeddings = self.cross_attention(
+            video_embeddings, prompt_embeddings
+        )
+
         # interpolate position embeddings
         position_embeddings = self._interpolate_pos_embed(
             self.position_embeddings.weight, video_embeddings.size(1)
@@ -96,24 +169,28 @@ class PromptFocus(nn.Module):
         
 
         # similarity weight
-        for idx in range(video_embeddings.shape[1]):
-            feature = video_embeddings[:, idx, :]
-            similarity_score = cosine_similarity(
-                feature.detach().cpu().numpy(), 
-                prompt_embeddings.squeeze(0).detach().cpu().numpy()
-            )[0][0]
-            feature = feature * similarity_score
+        # for idx in range(video_embeddings.shape[1]):
+        #     feature = video_embeddings[:, idx, :]
+        #     similarity_score = cosine_similarity(
+        #         feature.detach().cpu().numpy(), 
+        #         prompt_embeddings.squeeze(0).detach().cpu().numpy()
+        #     )[0][0]
+        #     feature = feature * similarity_score
+
         # multihead attention
         # TODO: gen caption from video & input to attention heads
         # prompt_embeddings = self.prompt_linear(prompt_embeddings)
         # video_embeddings = video_embeddings.permute(1, 0, 2)
+        # video_embeddings_attn = self.cross_attention(
+        #     video_embeddings, prompt_embeddings
+        # )
         # video_embeddings_attn, attn_weights = self.multihead_attention(
         #     query=video_embeddings, key=prompt_embeddings, value=prompt_embeddings
         # )
         # #transformer scoring
         # video_embeddings_attn = video_embeddings_attn.permute(1, 0, 2)
         # video_embeddings_enc = self.transformer_encoder(video_embeddings_attn)
-        video_embeddings_enc = self.transformer_encoder(video_embeddings)
+        # video_embeddings_enc = self.transformer_encoder(video_embeddings)
         
         attention_mask = torch.zeros([video_len, video_len])
         half_atten_len = min(self.kernel_size // 2 + 1, video_len)
@@ -127,7 +204,7 @@ class PromptFocus(nn.Module):
         )
 
         video_embeddings_dec = self.transformer_decoder(
-            video_embeddings_enc, attention_mask[:, None, :, :]
+            video_embeddings, attention_mask[:, None, :, :]
         )
         score = self.linear(video_embeddings_dec)
         return score, video_embeddings_dec.permute(1, 0, 2)
