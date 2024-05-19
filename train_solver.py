@@ -124,16 +124,21 @@ class Solver(object):
                     # print('video feature shape:', video_embeddings.shape)
                     # print(' video_mask shape:', video_mask.shape)
                     # print('prompt_embeddings shape:', prompt_embeddings.shape)
-                    score, video_embeddings_dec = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
-                    # score_np = score.detach().cpu().numpy().squeeze(0).squeeze(1)
-                    # summary,_ = generate_summary(
-                    #     score_np, 
-                    #     self.dataset[video_id]['change_points'], 
-                    #     self.dataset[video_id]['n_frames'], 
-                    #     self.dataset[video_id]['n_frame_per_seg'], 
-                    #     self.dataset[video_id]['picks']
-                    #     )
-                    # mask = [gt for frame_id, gt in enumerate(summary) if frame_id in self.dataset[video_id]['picks'] ]
+                    score, video_embeddings_dec , video_embeddings_reconstructed = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
+                    score_np = score.detach().cpu().numpy().squeeze(0).squeeze(1)
+                    summary,_ = generate_summary(
+                        score_np, 
+                        self.dataset[video_id]['change_points'], 
+                        self.dataset[video_id]['n_frames'], 
+                        self.dataset[video_id]['n_frame_per_seg'], 
+                        self.dataset[video_id]['picks']
+                        )
+                    mask = [gt for frame_id, gt in enumerate(summary) if frame_id in self.dataset[video_id]['picks'] ]
+                    
+                    represented_video_embeddings_reconstructed = represent_features(
+                        mask, 
+                        video_embeddings_reconstructed, 
+                    )   
                     # represented_features = represent_features(
                     #     mask, 
                     #     video_embeddings_dec, 
@@ -144,14 +149,24 @@ class Solver(object):
                     # representativeness_loss = self.representativeness_loss(represented_features, video_embeddings)
                     # diversity_loss = self.diversity_loss(video_embeddings_dec[np.array(mask) == 1])
 
-                    label = torch.tensor(self.dataset[video_id]['gtscore'], dtype=torch.float32).to(self.device)
+                    label = torch.tensor(self.dataset[video_id]['similarity_scores'], dtype=torch.float32).to(self.device)
                     label = label.unsqueeze(0).unsqueeze(2)
-                    # print(label)
+                    reconstruct_loss =  criterion(video_embeddings_reconstructed, video_embeddings) # NOTE: ~ 0.4
+                    
+                    prompt_embeddings = prompt_embeddings.repeat(video_embeddings.shape[0], 1, 1)
+                    represented_prompt_embeddings = represent_features(
+                        mask, 
+                        prompt_embeddings, 
+                    )  
+                    prompt_loss = criterion(
+                        represented_video_embeddings_reconstructed,
+                        represented_prompt_embeddings
+                    ) # NOTE: ~ 0.05
+                    
+                    similarity_loss = criterion(score, label) # NOTE: ~0.2
 
-                    loss = criterion(score, label)  
-                    # print
-                    # loss = representativeness_loss 
-                    # loss.requires_grad = True
+                    loss = reconstruct_loss + prompt_loss * 10 + similarity_loss * 2
+
                     optimizer.zero_grad()
                     loss.backward(retain_graph = True)
                     optimizer.step()
@@ -171,7 +186,7 @@ class Solver(object):
                 video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
                 video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
                 prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding'] , dtype=torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
-                score, _ = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
+                score, _, video_embeddings_reconstructed = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
                 # print(_)
                 
                 score = score.detach().cpu().numpy().squeeze(0).squeeze(1)
@@ -229,7 +244,7 @@ class Solver(object):
                 video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
                 video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
                 prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding'], dtype=torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
-                score, _ = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
+                score, _, video_embeddings_reconstructed = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
                 # print(_)
                 
                 score = score.detach().cpu().numpy().squeeze(0).squeeze(1)

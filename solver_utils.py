@@ -66,42 +66,42 @@ def step_lr_schedule(optimizer, epoch, init_lr, min_lr, decay_rate):
 
 
 
-# def represent_features(mask, video_embeddings):
-#     for i in range(len(mask)):
-#         if mask[i] == 0:
-#             video_embeddings[i] = video_embeddings[i] * 0.
-#     return video_embeddings
 import torch
-
-def represent_features(mask, video_embeddings, change_points: list, positions: list, device: str):
-    video_average_feature = torch.zeros(video_embeddings[0].shape)
-    video_average_feature = video_average_feature.to(device)
-    filled_map = torch.zeros(len(change_points))
-    for segment_idx, segment in enumerate(change_points):
-        start, end = segment
-        average_feature = torch.zeros(video_embeddings[0].shape)
-        average_feature = average_feature.to(device)
-        selected_count = 0
-        for i in range(start, end+1):
-            if i in positions and mask[positions.index(i)] == 1:
-                video_average_feature += video_embeddings[positions.index(i)]
-                average_feature += video_embeddings[positions.index(i)]
-                selected_count += 1
-        if selected_count > 0:
-            average_feature /= selected_count
-            for j in range(start, end+1):
-                if j in positions and mask[positions.index(j)] == 0:
-                    video_embeddings[positions.index(j)] = average_feature
-            filled_map[segment_idx] = 1
-    video_average_feature /= np.sum(mask)
-    # print(np.sum(mask))
-    for segment_idx, segment in enumerate(change_points):
-        if filled_map[segment_idx] == 0:
-            start, end = segment
-            for i in range(start, end+1):
-                if i in positions and mask[positions.index(i)] == 0:
-                    video_embeddings[positions.index(i)] = video_average_feature
+def represent_features(mask, video_embeddings):
+    for i in range(len(mask)):
+        if mask[i] == 0:
+            video_embeddings[i] = video_embeddings[i] * 0.
     return video_embeddings
+
+# def represent_features(mask, video_embeddings, change_points: list, positions: list, device: str):
+#     video_average_feature = torch.zeros(video_embeddings[0].shape)
+#     video_average_feature = video_average_feature.to(device)
+#     filled_map = torch.zeros(len(change_points))
+#     for segment_idx, segment in enumerate(change_points):
+#         start, end = segment
+#         average_feature = torch.zeros(video_embeddings[0].shape)
+#         average_feature = average_feature.to(device)
+#         selected_count = 0
+#         for i in range(start, end+1):
+#             if i in positions and mask[positions.index(i)] == 1:
+#                 video_average_feature += video_embeddings[positions.index(i)]
+#                 average_feature += video_embeddings[positions.index(i)]
+#                 selected_count += 1
+#         if selected_count > 0:
+#             average_feature /= selected_count
+#             for j in range(start, end+1):
+#                 if j in positions and mask[positions.index(j)] == 0:
+#                     video_embeddings[positions.index(j)] = average_feature
+#             filled_map[segment_idx] = 1
+#     video_average_feature /= np.sum(mask)
+#     # print(np.sum(mask))
+#     for segment_idx, segment in enumerate(change_points):
+#         if filled_map[segment_idx] == 0:
+#             start, end = segment
+#             for i in range(start, end+1):
+#                 if i in positions and mask[positions.index(i)] == 0:
+#                     video_embeddings[positions.index(i)] = video_average_feature
+#     return video_embeddings
 
 import numpy as np
 from ortools.algorithms.python import knapsack_solver

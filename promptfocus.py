@@ -6,8 +6,8 @@ from torch.nn import MultiheadAttention
 from torch.nn import (
     TransformerEncoder,
     TransformerEncoderLayer,
-    # TransformerDecoder,
-    # TransformerDecoderLayer,
+    TransformerDecoder,
+    TransformerDecoderLayer,
 )
 from einops import rearrange, repeat
 from sklearn.metrics.pairwise import cosine_similarity
@@ -105,13 +105,6 @@ class PromptFocus(nn.Module):
             num_heads=num_heads,
         )
 
-        self.transformer_encoder = TransformerEncoder(
-            encoder_layer=TransformerEncoderLayer(
-                d_model=self.vision_width, nhead=num_heads
-            ),
-            num_layers=num_layers,
-        )
-
         # TODO: replace by focal attetion
         self.transformer_decoder = LocalAttenModule(
             embed_dim=self.vision_width, kernel_size=kernel_size
@@ -127,6 +120,8 @@ class PromptFocus(nn.Module):
             dim_head=self.vision_width,
             dropout=0.3,
         )
+
+        self.reconstruct_decoder = nn.Linear(self.vision_width, self.vision_width)
         # self.sigmod = nn.Sigmoid()
     def _interpolate_pos_embed(self, pos_embed, video_length):
         if video_length > self.max_length:
@@ -154,18 +149,18 @@ class PromptFocus(nn.Module):
 
         video_embeddings = video_embeddings.permute(1, 0, 2)
 
-        video_embeddings = self.cross_attention(
+        video_embeddings_attn = self.cross_attention(
             video_embeddings, prompt_embeddings
         )
 
         # interpolate position embeddings
         position_embeddings = self._interpolate_pos_embed(
-            self.position_embeddings.weight, video_embeddings.size(1)
+            self.position_embeddings.weight, video_embeddings_attn.size(1)
         )
         # position_embeddings = position_embeddings
-        video_embeddings = video_embeddings + position_embeddings
+        video_embeddings_attn = video_embeddings_attn + position_embeddings
         # temporal transformer
-        video_embeddings = self.tt(video_embeddings, video_mask)  # shape dont change
+        video_embeddings_tt = self.tt(video_embeddings_attn, video_mask)  # shape dont change
         
 
         # similarity weight
@@ -202,12 +197,18 @@ class PromptFocus(nn.Module):
         attention_mask = (
             attention_mask[None, :, :] * video_mask[:, None, :] * video_mask[:, :, None]
         )
-
         video_embeddings_dec = self.transformer_decoder(
-            video_embeddings, attention_mask[:, None, :, :]
+            video_embeddings_tt, attention_mask[:, None, :, :]
         )
         score = self.linear(video_embeddings_dec)
-        return score, video_embeddings_dec.permute(1, 0, 2)
+
+        #TODO: transformer decode -> reconstruct
+        video_embeddings_scored = video_embeddings * score
+        video_embeddings_reconstructed = self.reconstruct_decoder(
+            video_embeddings_scored
+        )
+
+        return score, video_embeddings_dec.permute(1, 0, 2), video_embeddings_reconstructed.permute(1, 0, 2)
 
 
 # if __name__ == "__main__":

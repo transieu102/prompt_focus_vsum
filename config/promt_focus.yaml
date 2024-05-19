@@ -18,7 +18,7 @@ image_size: 224
 max_video_length: 1294
 
 # optimizer
-init_lr: 1e-5
+init_lr: 1e-3
 min_lr: 0
 max_epoch: 300
 batch_size: 1
