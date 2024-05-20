@@ -47,8 +47,11 @@ def count_parameters(model):
 
 class Solver(object):
     def __init__(self):
-        self.models = {}
+        self.best_models = {}
+        self.best_results = {}
         self.evaluate_result = {}
+        self.model = None
+
     def load_config(self, config_path):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -62,16 +65,21 @@ class Solver(object):
         np.random.seed(seed)
         random.seed(seed)
         cudnn.benchmark = True
-        for i in range(len(self.split)):
-            self.models[i] = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], 
+        self.model = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], 
             max_length=self.config['max_video_length']).to(self.device)
+        # for i in range(len(self.split)):
+        #     self.best_models[i] = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], 
+        #     max_length=self.config['max_video_length']).to(self.device)
 
     def load_dataset(self):
         self.dataset = read_h5_file(self.config['dataset_path'])
     def load_split(self):
         with open (self.config['split_path'], 'r') as f:
             self.split = json.load(f)
-
+        for i in range(len(self.split)):
+            self.best_models[i] = PromptFocus(self.config['num_heads'], self.config['tt_depth'], self.config['num_layers'], self.config['kernel_size'], self.config['loss_type'], self.config['vit'], 
+            max_length=self.config['max_video_length']).to(self.device)
+            self.best_results[i] = 0
     def representativeness_loss(self, outputs, targets):
         # print(outputs, targets)
         criterion = nn.MSELoss()
@@ -89,20 +97,19 @@ class Solver(object):
         self.load_dataset()
         print("Load split...")
         self.load_split()
-        self.initualize()
+        # self.initualize()
         # self.evaluate_all_split()
         if split_ids is None:
             split_ids = [i for i in range(len(self.split))]
         for split_id in split_ids:
-        # for split_id in [4]:
+            self.initualize()
             print('Begin training on split {}'.format(split_id))
             train_keys = self.split[split_id]['train_keys']
-            model_vram = torch.cuda.memory_allocated()
-            self.evaluate(split_id, -1)
+            # model_vram = torch.cuda.memory_allocated()
+            # self.evaluate(split_id, -1)
             # input()
-            optimizer = torch.optim.AdamW(self.models[split_id].parameters(), lr=float(self.config['init_lr']))
+            optimizer = torch.optim.AdamW(self.model.parameters(), lr=float(self.config['init_lr']))
             criterion = nn.MSELoss()
-
             for epoch in range(self.config['max_epoch']):
                 cosine_lr_schedule(
                 optimizer,
@@ -111,7 +118,7 @@ class Solver(object):
                 float(self.config["init_lr"]),
                 float(self.config["min_lr"]),
                 )
-                self.models[split_id].train()
+                self.model.train()
                 # for video_id in tqdm(train_keys):
                 for video_id in tqdm(train_keys):
                     video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
@@ -124,7 +131,7 @@ class Solver(object):
                     # print('video feature shape:', video_embeddings.shape)
                     # print(' video_mask shape:', video_mask.shape)
                     # print('prompt_embeddings shape:', prompt_embeddings.shape)
-                    score, video_embeddings_dec , video_embeddings_reconstructed = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
+                    score, video_embeddings_dec , video_embeddings_reconstructed = self.model(video_embeddings, video_mask, prompt_embeddings)
                     score_np = score.detach().cpu().numpy().squeeze(0).squeeze(1)
                     summary,_ = generate_summary(
                         score_np, 
@@ -173,20 +180,21 @@ class Solver(object):
                 if epoch % 10 == 0:
                     print('Epoch:', epoch)
                     print('Loss:', loss)
-                    self.evaluate(split_id, epoch)
-        self.evaluate_all_split()
+                    self.evaluate(split_id, epoch, 'avg')
+        self.evaluate_all_split('avg')
                 #   input()
-    def evaluate(self, split_id, epoch: int):
+    def evaluate(self, split_id, epoch: int, eval_metric='avg'):
             test_keys = self.split[split_id]['test_keys']
             split_f1 = []
-            split_kscore = []
-            split_spearn = []
+            if eval_metric == 'avg':
+                split_kscore = []
+                split_spearn = []
             # plot = 1
             for video_id in test_keys:
                 video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
                 video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
                 prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding'] , dtype=torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
-                score, _, video_embeddings_reconstructed = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
+                score, _, video_embeddings_reconstructed = self.model(video_embeddings, video_mask, prompt_embeddings)
                 # print(_)
                 
                 score = score.detach().cpu().numpy().squeeze(0).squeeze(1)
@@ -207,44 +215,48 @@ class Solver(object):
                 final_f_score, final_prec, final_rec = evaluate_summary(
                     summary, 
                     self.dataset[video_id]['user_summary'],
-                    
+                    eval_metric
                     )
                 split_f1.append(final_f_score)
-                user_anno =self.dataset[video_id]['user_anno'][()].T
-    
-                # tính kendalltau score
-                kscore = calculate_rank_order_statistics(frame_scores=framescores,user_anno=user_anno, metric="kendalltau")
-                # kscores.append(kscore)
-                split_kscore.append(kscore)
+                if eval_metric == 'avg':
+                    user_anno =self.dataset[video_id]['user_anno'][()].T
+        
+                    # tính kendalltau score
+                    kscore = calculate_rank_order_statistics(frame_scores=framescores,user_anno=user_anno, metric="kendalltau")
+                    # kscores.append(kscore)
+                    split_kscore.append(kscore)
 
 
-                # tính kendalltau score
-                sscore = calculate_rank_order_statistics(frame_scores=framescores, user_anno=user_anno, metric="spearman")
-                # sscores.append(sscore)
-                split_spearn.append(sscore)
+                    # tính kendalltau score
+                    sscore = calculate_rank_order_statistics(frame_scores=framescores, user_anno=user_anno, metric="spearman")
+                    # sscores.append(sscore)
+                    split_spearn.append(sscore)
             print("Split ", split_id)        
-            print('F-score:', np.mean(final_f_score))
-            print('kendalltau score:', np.mean(kscore))
-            print('spearman score:', np.mean(sscore))
-            # self.evaluate_result[split_id] = [np.mean(final_f_score), np.mean(kscore), np.mean(sscore)]
-            
-            # os.makedirs(self.config['save_dir'], exist_ok=True)
-            # self.save_model(self.config['save_dir'] + '/' + f"model_tvsum_{split_id}_{np.mean(final_f_score)}_{np.mean(kscore)}_{np.mean(sscore)}_{epoch}" + '.pt')
-    def evaluate_all_split(self):
+            print('F-score:', np.mean(split_f1))
+            if eval_metric == 'avg':
+                print('kendalltau score:', np.mean(split_kscore))
+                print('spearman score:', np.mean(split_spearn))
+            if np.mean(split_f1) > self.best_results[split_id]:
+                self.best_results[split_id] = np.mean(split_f1)
+                self.best_models[split_id].load_state_dict(self.model.state_dict())
+           
+    def evaluate_all_split(self, eval_metric='avg'):
         f1 = []
-        ks = []
-        sp = []
+        if eval_metric == 'avg':
+            ks = []
+            sp = []
         for split_id in range(len(self.split)):
             test_keys = self.split[split_id]['test_keys']
             split_f1 = []
-            split_kscore = []
-            split_spearn = []
+            if eval_metric == 'avg':
+                split_kscore = []
+                split_spearn = []
             # plot = 1
             for video_id in test_keys:
                 video_embeddings = torch.tensor(self.dataset[video_id]['video_embeddings'], dtype=torch.float32).to(self.device).unsqueeze(1)
                 video_mask = torch.tensor(self.dataset[video_id]['video_mask'], dtype=torch.float32).to(self.device).unsqueeze(0)
                 prompt_embeddings = torch.tensor(self.dataset[video_id]['prompt_embedding'], dtype=torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
-                score, _, video_embeddings_reconstructed = self.models[split_id](video_embeddings, video_mask, prompt_embeddings)
+                score, _, video_embeddings_reconstructed = self.best_models[split_id](video_embeddings, video_mask, prompt_embeddings)
                 # print(_)
                 
                 score = score.detach().cpu().numpy().squeeze(0).squeeze(1)
@@ -265,40 +277,33 @@ class Solver(object):
                 final_f_score, final_prec, final_rec = evaluate_summary(
                     summary, 
                     self.dataset[video_id]['user_summary'],
-                    
+                    eval_metric
                     )
                 split_f1.append(final_f_score)
-                user_anno =self.dataset[video_id]['user_anno'][()].T
-    
-                # tính kendalltau score
-                kscore = calculate_rank_order_statistics(frame_scores=framescores,user_anno=user_anno, metric="kendalltau")
-                # kscores.append(kscore)
-                split_kscore.append(kscore)
 
-
-                # tính kendalltau score
-                sscore = calculate_rank_order_statistics(frame_scores=framescores, user_anno=user_anno, metric="spearman")
-                # sscores.append(sscore)
-                split_spearn.append(sscore)
+                if eval_metric == 'avg':
+                    user_anno =self.dataset[video_id]['user_anno'][()].T
+                    # tính kendalltau score
+                    kscore = calculate_rank_order_statistics(frame_scores=framescores,user_anno=user_anno, metric="kendalltau")
+                    # kscores.append(kscore)
+                    split_kscore.append(kscore)
+                    # tính kendalltau score
+                    sscore = calculate_rank_order_statistics(frame_scores=framescores, user_anno=user_anno, metric="spearman")
+                    # sscores.append(sscore)
+                    split_spearn.append(sscore)
             print("Split ", split_id)        
-            print('F-score:', np.mean(final_f_score))
-            print('kendalltau score:', np.mean(kscore))
-            print('spearman score:', np.mean(sscore))
-            # self.evaluate_result[split_id] = [np.mean(final_f_score), np.mean(kscore), np.mean(sscore)]
-            f1.append(np.mean(final_f_score))
-            ks.append(np.mean(kscore))
-            sp.append(np.mean(sscore))
+            print('F-score:', np.mean(split_f1))
+            f1.append(np.mean(split_f1))
+            if eval_metric == 'avg':
+                print('kendalltau score:', np.mean(split_kscore))
+                print('spearman score:', np.mean(split_spearn))
+                ks.append(np.mean(split_kscore))
+                sp.append(np.mean(split_spearn))
         print("Average:")
         print('F-score:', np.mean(f1))
-        print('kendalltau score:', np.mean(ks))
-        print('spearman score:', np.mean(sp))
-            # os.makedirs(self.config['save_dir'], exist_ok=True)
-            # self.save_model(self.config['save_dir'] + '/' + f"model_tvsum_{split_id}_{np.mean(final_f_score)}_{np.mean(kscore)}_{np.mean(sscore)}_{epoch}" + '.pt')
-    # def save_model(self, path):
-    #     torch.save(self.model, path)
-
-    # def load_model(self, path):
-    #     return torch.load(path)
+        if eval_metric == 'avg':
+            print('kendalltau score:', np.mean(ks))
+            print('spearman score:', np.mean(sp))
 solver = Solver()
 solver.load_config('config/promt_focus.yaml')
 solver.train()
